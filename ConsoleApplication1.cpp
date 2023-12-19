@@ -50,16 +50,15 @@ public:
                 /// классов
     ~Haffman();  /// деструктор, также вызывает неявно все деструкторы
 
-    double buildForEncode(ifstream& f, ostream& out_f) {
-            /// здесь будем закодировать
-        // * позже вынести из тела класса !
-    
-    }
 
-
-    void buildForEncode(ifstream& f);   /// строим дерево для закодирования входной строки
+    void buildForEncode(ifstream& f);
+    /// строим дерево для закодирования входной строки
             //void buildForDecode(); 2-я фаза прописать !!
     
+    void encode(ifstream& in_f, ofstream& out_f);
+    /// сама функция кодирования файла по уже построенному дереву
+
+
     struct Sort {       /// в Хаффмане нужна сортировка, на дереве это коды lfet - 0, right - 1 и т.д.
         bool operator() (const Haffman_Tree* l, const Haffman_Tree* r) {
             return l->key < r->key;
@@ -67,7 +66,66 @@ public:
     };
 };
 
+void Haffman::encode(ifstream& f, ofstream& g) {
+    buildForEncode(f);  // строим дерево по входному файлу
 
+    Haffman_Tree(root); 
+
+
+    int count = 0;
+    for (ii = alphabet.begin(); ii != alphabet.end(); ii++) {
+        if (ii->second != 0) count += 40;
+    }
+    //count пригодится для раскодирования
+    // т.к в file.write() нужно указывать кол-во символов
+    // то преобразуя int в последовательность цифр (char*) 
+    // нужно учитывать, что каждый разряд count будет давать ещё
+    // один байт
+    g.write((char*)(&count), sizeof(count));
+
+    for (int i = 0; i < 256; i++) {
+        if (alphabet[char(i)] > 0) {
+            char c = char(i);
+            g.write((char*)(&c), sizeof(c));
+            g.write((char*)(&alphabet[char(i)]), sizeof(alphabet[char(i)]));
+        }// здесь мы пишем табличку кодов
+    }
+    f.clear();//очищаем входной файл
+    f.seekg(0); // устанавливаем курсор на начало файла
+    count = 0;
+
+    char tx = 0;    // запись самого шифра из нулей и единиц по байтам
+    while (!f.eof()) {
+        char c = f.get();
+
+        vector<bool> x = buf[c]; // получаем текущий код символа 
+        // Haffman :: map <char, vector<bool> > buf;
+
+        for (int j = 0; j < x.size(); j++) {
+            tx = tx | x[j] << (7 - count);//формируем байт вывода
+            count++;
+            if (count == 8)
+            {//если байт переполнился - выводим его в файл
+                count = 0;
+                g << tx;
+                tx = 0;
+            }
+        }
+    }
+    f.clear();// очищаем флаги ошибок потока
+    // о необходиости этого действия узнал из документации
+    // если при чтении дошли до конца, то имеет другое состояние
+    // с которым работать дальше нельзя, поэтому ifstream_file.clear() 
+    // очищает эти флаги ошибок и всё такое
+    f.seekg(0, std::ios::end); // устанавливаем курсор на начальную позицию
+
+    g.seekp(0, std::ios::end); // устанавливаем указатель на начальную позицию
+    double sizeF = f.tellg();
+    double sizeG = g.tellp();
+    f.close();
+    g.close();
+    
+}
 
 
 Haffman::Haffman() {    // по умолчанию дерево пустое
@@ -90,10 +148,10 @@ void Haffman::buildForEncode(ifstream& f) {
         char c = f.get();
         alphabet[c]++;
     }
-    list<Haffman_Tree*> L;
+    list<Haffman_Tree*> L;  // алфавит 
     for (ii = alphabet.begin(); ii != alphabet.end(); ii++) {
         Haffman_Tree* p = new Haffman_Tree;
-        p->s = ii->first;
+        p->s = ii->first;   // заносим в алфавит текущий символ
         p->key = ii->second;
         L.push_back(p);
     }
@@ -105,8 +163,10 @@ void Haffman::buildForEncode(ifstream& f) {
         L.pop_front();
         Haffman_Tree* pr = new Haffman_Tree(Left, Right);
         L.push_back(pr);
+        // формируем дерево начиная с листьев, пока размер дерева
+        // не достигнет единицы (дальше некуда сворачивать)
     }
-    root = L.front();
+    root = L.front();   // наконец, устанавливаем наш корень в начало
 }
 
 /// map<type1, type2> - класс-шаблон из std для словаря
@@ -129,7 +189,8 @@ int main() {
     // * * * * * * * I N T E R F A C E * * * * * * * * * * *
     //======================================================
 
-    char* path = new char[200];     // переменная под строку пути файла
+    char *path = new char[200];     // переменная под строку пути файла
+    char* path2 = new char[200];    // строка для выходного файла
     cout << "Enter path(C://folder//...//file.txt";
     cin >> path;
 
@@ -141,10 +202,19 @@ int main() {
 
     if (!quest_for_action) {       /// ввели 0 - закодирование файла
         ifstream file_in(path, ios::in | ios::binary); // открытие для чтения
-                    // т.к. разные символы кодируется по разному, в том числе 
-                    // по кол-ву бит на символ, то открываем файл в режиме битов
-                    // чтобы не заморачиваться над форматом кодировки самого файла
+        // т.к. разные символы кодируется по разному, в том числе 
+        // по кол-ву бит на символ, то открываем файл в режиме битов
+        // чтобы не заморачиваться над форматом кодировки самого файла
+        cout << "enter path to encode (do not Enter the same path please)" << endl;
+        cin >> path2;
+
+        ofstream file_out(path2, ios::out | ios::binary);
         Haffman haf;
+        haf.encode(file_in, file_out);
+
+        cout << "Coded!" << endl << "path : " << path2 << endl;
+        return 0;
+    }
 
 
 
