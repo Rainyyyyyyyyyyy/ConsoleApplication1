@@ -21,10 +21,7 @@ public:
     }
 
     ~Haffman_Tree() {
-        //while (left)
-       //     delete left;
-       // while (right)
-       //     delete right;
+        //while (left)    delete left;   while (right)    delete right; // НЕ РАБОТАЕТ
         if (left)delete left;
         // в рекурсии удаляем память под ветви
                     // именно рекурсия, потому что left и right имеют тип данных
@@ -43,7 +40,7 @@ class Haffman {      /// агрегированный класс под коды
     map<char, int> ::iterator ii;       /// итератор для удобства прохода по дереву
 
     vector<bool> code;      /// массив из нулей и единиц для задания кода
-    map<char, vector<bool> > buf;   /// при закодировании мы будем "заталкивать" все коды
+    map<char, vector<bool> > buff;   /// при закодировании мы будем "заталкивать" все коды
                 /// в char, то есть в переменную 8 бит, отсюда выйдут остатки кодов, если есть длины не кратные 8
 
 public:
@@ -51,13 +48,19 @@ public:
                 /// классов
     ~Haffman();  /// деструктор, также вызывает неявно все деструкторы
 
-    void TreeHaf(Haffman_Tree *r);  // табличка готова, приступаем к раздаче кодов для символов для раскодирования
-    void buildForEncode(ifstream&);
+    void TreeHaf(Haffman_Tree *);  // табличка готова, приступаем к раздаче кодов для символов для раскодирования
+    void pre_build_Tree_ForEncode(ifstream &); // done
+
+    void pre_build_Tree_ForDecode(ifstream&);
+    // заготовка под раскодирование
+
+
     /// строим дерево для закодирования входной строки
-            //void buildForDecode(); 2-я фаза прописать !!
+            //void pre_buld_Tree_ForDncode(); 2-я фаза прописать !!
     
-    void encode(ifstream&, ofstream&);
+    void encode(ifstream&, ofstream&);  // done
     /// сама функция кодирования файла по уже построенному дереву
+    void decode(ifstream&, ofstream&);
 
 
     struct Sort {       /// в Хаффмане нужна сортировка, на дереве это коды lfet - 0, right - 1 и т.д.
@@ -68,22 +71,21 @@ public:
 };
 void Haffman::TreeHaf(Haffman_Tree *r) {    // раздача кодов по для символов по построенному дереву Хаффмана
     if (r->left != NULL) {
-        code.push_back(0);
-        TreeHaf(r->left);
+        code.push_back(0);  // векторы удобные!
+        TreeHaf(r->left); // рекурсия для достижения позиции листика с одним символов и присвоения ему кода
     }
-    if (r->right != NULL) {
+    if (r->right != NULL) { // проходим по дереву к листьям от корня
         code.push_back(1);
-        TreeHaf(r->right);
+        TreeHaf(r->right);// аналогичная рекурсия
     }
-    if (r->right == NULL && r->left == NULL) {
-        buf[r->s] = code;
+    if (r->right == NULL && r->left == NULL) {  // дошли до листика с одним символом
+        buff[r->s] = code;  // |=> даём ему наш "набранный" код
     }
-    if (!code.empty())
+    if (!code.empty()) // коды раздали, теперь вспомогательную память(она здесь более не понадобится)
         code.pop_back();
 }
 void Haffman::encode(ifstream& in_f, ofstream& out_f) {
-    buildForEncode(in_f);  // строим дерево по входному файлу
-
+    pre_build_Tree_ForEncode(in_f);  // строим дерево по входному файлу
     TreeHaf(root); 
 
 
@@ -96,7 +98,7 @@ void Haffman::encode(ifstream& in_f, ofstream& out_f) {
     // то преобразуя int в последовательность цифр (char*) 
     // нужно учитывать, что каждый разряд count будет давать ещё
     // один байт
-    out_f.write((char*)(&count), sizeof(count));
+    out_f.write((char*)(&count), sizeof(count)); /// выводим длину имеющейся строки
 
     for (int i = 0; i < 256; i++) {
         if (alphabet[char(i)] > 0) {
@@ -113,8 +115,8 @@ void Haffman::encode(ifstream& in_f, ofstream& out_f) {
     while (!(in_f.eof())) {
         char c = in_f.get();
 
-        vector<bool> x = buf[c]; // получаем текущий код символа 
-        // Haffman :: map <char, vector<bool> > buf;
+        vector<bool> x = buff[c]; // получаем текущий код символа 
+        // Haffman :: map <char, vector<bool> > buff;
 
         for (int j = 0; j < x.size(); j++) {
             tx = tx | x[j] << (7 - count);//формируем байт вывода
@@ -153,44 +155,55 @@ Haffman::~Haffman() {   // деструктор рекурсивный(т.к. д
     delete root;
     root = NULL;
 }
-// ЭТО НЕ ЕНКОДЕ!!! ЭТО ДЕКОДЕ!!!
-/*void Haffman::buildForEncode(ifstream& in_f) {  if (root != NULL) { // если там что-то лежит - удаляем
+
+void Haffman::pre_build_Tree_ForEncode(ifstream& in_f) {
+
+    if (root != NULL) { // если там чё-то есть - чистим
         delete root;
         root = NULL;
     }
-    while (!in_f.eof()) {  /// считываем с файла всю входную строку
+    while (!in_f.eof()) { // считываем файл
         char c = in_f.get();
-        alphabet[c]++;
+        alphabet[c]++;      // считаем счётчики повторений
     }
-    list<Haffman_Tree*> L;  // алфавит 
+    list<Haffman_Tree*> L;
     for (ii = alphabet.begin(); ii != alphabet.end(); ii++) {
         Haffman_Tree* p = new Haffman_Tree;
-        p->s = ii->first;   // заносим в алфавит текущий символ
+        p->s = ii->first;   // строим дерево по полученному алфавиту и счётчикам
         p->key = ii->second;
         L.push_back(p);
     }
     while (L.size() != 1) {
-        L.sort(Sort());
+        L.sort(Sort());     // сортируем дерево 
         Haffman_Tree* Left = L.front();
         L.pop_front();
         Haffman_Tree* Right = L.front();
         L.pop_front();
         Haffman_Tree* pr = new Haffman_Tree(Left, Right);
         L.push_back(pr);
-        // формируем дерево начиная с листьев, пока размер дерева
-        // не достигнет единицы (дальше некуда сворачивать)
     }
-    root = L.front();   // наконец, устанавливаем наш корень в начало
-}*/
-void Haffman::buildForEncode(ifstream& in_f) {
-
+    root = L.front();
+}
+void Haffman::pre_build_Tree_ForDecode(ifstream& in_f_coded) {
     if (root != NULL) {
-        delete root;
+        delete root;    // чистим ненужные данные
         root = NULL;
     }
-    while (!in_f.eof()) {
-        char c = in_f.get();
-        alphabet[c]++;
+    if (alphabet.size() != 0) // чистим ненужные данные
+        alphabet.clear();
+    if (code.size() != 0)
+        code.clear();
+    if (buff.size() != 0)
+        buff.clear();
+
+    int x1, x2;
+    char s;
+    in_f_coded.read((char*)&x1, sizeof(x1));
+    while (x1 > 0) {
+        in_f_coded.read((char*)&s, sizeof(s));
+        in_f_coded.read((char*)&x2, sizeof(x2));
+        x1 -= 40;
+        alphabet[s] = x2;
     }
     list<Haffman_Tree*> L;
     for (ii = alphabet.begin(); ii != alphabet.end(); ii++) {
@@ -199,7 +212,7 @@ void Haffman::buildForEncode(ifstream& in_f) {
         p->key = ii->second;
         L.push_back(p);
     }
-    while (L.size() != 1) {
+    while (L.size() != 1) { //  Аналогично строим дерево
         L.sort(Sort());
         Haffman_Tree* Left = L.front();
         L.pop_front();
@@ -211,20 +224,43 @@ void Haffman::buildForEncode(ifstream& in_f) {
     root = L.front();
 }
 
-/// map<type1, type2> - класс-шаблон из std для словаря
-/*
-    Будем считать, что ключ - название товара, а значение - цена товара.
-    То есть в данном случае элементу с ключом "bread" присваивается значение 30.
-    При этом не важно, что ранее создан пустой словарь, и в нем нет никакого элемента с ключом "bread"
-    - если его нет, то он создается. Если же элемент с данным ключом уже есть, то меняется его значение.
-
-Чтобы получить элемент по определенному ключу, используем тот же синтаксис.
-Например, поскольку значение элемента - число, то мы можем, обратившись по ключу, получить это число
-cout<<mapa[key], где key - type1, выведется на консоль - type2
 
 
+    
 
-    */
+void Haffman::decode(ifstream& f_in_coded, ofstream& f_out) {
+    if (f_in_coded.is_open()) {
+        pre_build_Tree_ForDecode(f_in_coded);
+    }
+    else
+        return;
+    TreeHaf(root);  // имеем дерево после pre_buld_Tree_ForDncode(f_in_coded)
+
+    char crypt_byte;
+    int count = 0;
+    Haffman_Tree *p = root;
+    crypt_byte = f_in_coded.get();
+    while (!f_in_coded.eof()) { // начинаем проходить по файлу с шифром
+        bool b = crypt_byte & (1 << (7 - count)); // заносим в выводимый байт коды
+        if (b)
+            p = p->right; // проверка на текущий бит, чтобы по дереву достичь символа из таблицы
+        else
+            p = p->left;
+        if (p->right == NULL && p->left == NULL) { // дошли до листа с символом из таблицы
+            f_out << p->s; // выведи символ, идём заного по циклу
+            p = root; // вернулись в корень дерева после вывода символа
+        }
+        count++; // счётчик последующего бита
+        if (count == 8) { //если переполнился рабочий байт, то обнуляем его
+            count = 0;  // даже если код символа >8k, (k - целое), то позиция в дереве (*p) всё равно сохранена
+                        // и просто ищем дальше, но считываем следующий байт шифра с файла
+            crypt_byte = f_in_coded.get();
+        }
+    }
+
+}
+
+
 int main() {
 
     // =====================================================
@@ -247,7 +283,7 @@ int main() {
         // т.к. разные символы кодируется по разному, в том числе 
         // по кол-ву бит на символ, то открываем файл в режиме битов
         // чтобы не заморачиваться над форматом кодировки самого файла
-        cout << "Enter path to encode (Please, do not enter the same path): " << endl;
+        cout << "Enter path to encoded (Please, do not enter the same path): " << endl;
         cin >> path2;
 
         ofstream file_out(path2, ios::out | ios::binary);
@@ -257,7 +293,19 @@ int main() {
         cout << "Coded!" << endl << "path : " << path2 << endl;
         return 0;
     }
-    /// ФОРМИРУЕТ ТОЛЬКО ТАБЛИЧКУ!!!!!!
+    if (quest_for_action == 1) {
+        ifstream file_in(path, ios::in | ios::binary);
+        cout << "enter path to decoded (Please, do not enter the same path): " << endl;
+        cin >> path2;
+        ofstream file_out(path2, ios::out | ios::binary);
+        Haffman decoded_thing;
+        decoded_thing.decode(file_in, file_out);
+        cout << "Decoded!" << endl << "path: " << path2 << endl;
+        return 0;
+    }
+    cout << "Error with input" << endl;
+
+    /// ФОРМИРУЕТ ТАБЛИЧКУ И КОДИРУЕТ ФАЙЛ!!!!!!!
 
 
     return 0;
